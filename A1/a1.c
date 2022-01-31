@@ -59,6 +59,7 @@ void memoryInfo(int samples, int tdelay){
     for(int i=0; i<samples; i++){
         if(sysinfo(&sysInfo) == -1){
             printf("sysinfo run with error");
+            break;
         }
         double totalram = sysInfo.totalram;
         double freeram = sysInfo.freeram;
@@ -77,15 +78,36 @@ void memoryInfo(int samples, int tdelay){
     }
 }
 
-int inArray(char *array, int lasti, char name[UT_NAMESIZE]){
-    //returns 1 if true
-    //returns 0 if false
-    for(int i=0; i<lasti; i++){
-        if(strcmp(*(array+i), name) == 0){
-            return 1;
+void userStats(int numUsers){
+    struct utmp *users;
+    users = getutent();
+    setutent();
+    //just to make sure that if other people login/logout, we can still account for them
+    numUsers += 5;
+    char usernames[numUsers][UT_NAMESIZE];
+    int index = 0;
+    while(users != NULL){
+        if(users->ut_type == USER_PROCESS){
+            if(index == 0){
+                memcpy(usernames[index], users->ut_name, UT_NAMESIZE);
+                index++;
+            }else{
+                int exists = 0;
+                for(int i=0; i<index; i++){
+                     if(memcmp(usernames[i], users->ut_name, 8)==0){
+                        exists = 1;
+                     }
+                }
+                if(exists == 0){
+                    memcpy(usernames[index], users->ut_name, UT_NAMESIZE);
+                    index++;
+                }
+            }
         }
+        users = getutent();
     }
-    return 0;
+    endutent();
+    printf("Number of users connected: %d\n", index);
 }
 
 void user(){
@@ -95,7 +117,6 @@ void user(){
     int i=0;
     //need an array of chars to store usernames
     //make sure to not double count users that are connected to several sessions
-    char* usernames;
     int lasti = 0;
     printf("\n### Sessions/Users ###\n");
     while(users != NULL){
@@ -103,16 +124,14 @@ void user(){
             printf("%.*s, ", UT_NAMESIZE, users->ut_name);
             printf("%s, ", users->ut_line);
             printf("%.*s\n", UT_HOSTSIZE,  users->ut_host);
-            if(inArray(&usernames, lasti, users->ut_name) == 0){
-                //if its not in array, add to array
-                *(usernames + lasti) = users->ut_name;
-                lasti ++;
-            }
-            //i++;
+            i++;
         }
         users = getutent();
     }
-    printf("There are %d users connected\n", i);
+    printf("Number of sessions: %d\n", i);
+    setutent();
+    userStats(i, users);
+    endutent();
 }
 
 int main(int argc, char** argv){
