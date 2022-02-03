@@ -2,12 +2,200 @@
 #include <string.h>
 #include <math.h>
 #include <stdlib.h>
+#include <ctype.h>
 
-#include <sys/utsname.h>
-#include <sys/sysinfo.h>
-#include <unistd.h>
-#include <utmp.h>
-#include <err.h>
+#include <unistd.h> 
+#include <utmp.h> 
+#include <sys/utsname.h> //system information summary
+#include <sys/sysinfo.h>//memory info
+
+void cpuInfo(int samples, int tdelay, int graphics){
+    //reference: https://rosettacode.org/wiki/Linux_CPU_utilization#C
+    char str[100];
+    const char d[2] = " ";
+    char* token;
+    int i = 0;
+    long int sum = 0, idle, lastSum = 0,lastIdle = 0;
+    long double cpu_usage;
+    int tot_sam = samples;
+
+    printf("\n### CPU Usage Info ###\n");
+
+    while(samples>0){
+	    FILE* fp = fopen("/proc/stat","r");
+        i = 0;
+	    fgets(str,100,fp);
+	    fclose(fp);
+	    token = strtok(str,d);
+	    sum = 0;
+	    while(token!=NULL){
+	    	token = strtok(NULL,d);
+	    	if(token!=NULL){
+	    		sum += atoi(token);
+	    	if(i==3)
+	    		idle = atoi(token);
+	    		i++;
+	    	}
+	    }
+        cpu_usage = 100 - (idle-lastIdle)*100.0/(sum-lastSum);
+
+        if(graphics == 1){
+            int bars = cpu_usage;
+            for(int j=0; j<cpu_usage+2; j++){
+                printf("|");
+            }
+            printf(" %.2Lf%%\n", cpu_usage);
+        }else{
+            printf("\rTotal CPU use = %.2Lf%%", cpu_usage);
+            fflush(stdout);
+        }
+
+	    lastIdle = idle;
+        lastSum = sum;
+	    samples--;
+	    sleep(tdelay);
+    }
+    if(graphics == 1){
+        printf("\nTotal CPU use = %.2Lf%%", cpu_usage);
+    }
+    printf("\n");
+}
+
+void memoryInfo(int samples, int tdelay, int graphics){
+    double lastval = 0;
+    struct sysinfo sysInfo;
+    printf("\n### Memory ### (Physical Used/Total -- Virtual Used/Total)\n");
+    for(int i=0; i<samples; i++){
+        if(sysinfo(&sysInfo) == -1){
+            printf("sysinfo run with error");
+            break;
+        }
+        double totalram = sysInfo.totalram;
+        double freeram = sysInfo.freeram;
+        double totalswap = sysInfo.totalswap;
+        double freeswap = sysInfo.freeswap;
+        double usedram = totalram - freeram;
+        double usedvirt = usedram + (totalswap - freeswap);
+        double totalvirt = totalram + totalswap;
+        double convert = 9.31 * pow(10, -10);
+        usedram *= convert;
+        totalram *= convert;
+        usedvirt *= convert;
+        totalvirt *= convert;
+        printf("%.2f GB / %.2f GB -- %.2f GB / %.2f GB", usedram, totalram, usedvirt, totalvirt);
+	
+	    if(graphics == 1){
+            //calculate the relative change
+            double change = usedram - lastval;
+            if(change == usedram || change == 0){
+                printf("    |o 0.00 (%.2f)", usedram);
+            }else if(change > 0){
+                change *= 100;
+                if(change < 1){
+                    printf("    |o");
+                }else{
+                    int changes = change;
+                    printf("    |");
+                    for (int k = 0; k < changes; k++) {
+                        printf("#");
+                    }
+                    if(change != changes){
+                        //if change is not an intger
+                        printf("*");
+                    }   
+                }
+                
+                change /= 100;
+                printf(" %.2f (%.2f)", change, usedram);
+            }else if(change < 0){
+                change *= -100;
+                if(change < 1){
+                    printf("    |@");
+                }else{
+                    int changes = change;
+                    printf("    |");
+                    for (int k = 0; k < changes; k++) {
+                        printf(":");
+                    }
+                    if(change != changes){
+                        //if change is not an integer
+                        printf("@");
+                    }
+                }
+
+                change /= 100;
+                printf(" %.2f (%.2f)", change, usedram);
+            }
+        }
+        printf("\n");
+        lastval = usedram;
+        sleep(tdelay);
+    }
+}	
+
+void userStats(int numUsers, struct utmp* users){
+    users = getutent();
+    setutent();
+    //just to make sure that if other people login/logout, we can still account for them
+    numUsers += 5;
+    char usernames[numUsers][UT_NAMESIZE];
+    int index = 0;
+    while(users != NULL){
+        if(users->ut_type == USER_PROCESS){
+            if(index == 0){
+		        memcpy(usernames[index], users->ut_name, UT_NAMESIZE);
+	            index++;
+            }else{
+                int exists = 0;
+                for(int i=0; i<index; i++){
+		            if(memcmp(usernames[i], users->ut_name, 8)==0){
+                        exists = 1;
+		            }
+                }
+                if(exists == 0){
+		            memcpy(usernames[index], users->ut_name, UT_NAMESIZE);
+                    index++;
+	      	    }
+            }
+        }
+	users = getutent();
+    }
+    endutent();
+    printf("Number of users connected: %d\n", index);
+}
+
+void user(int samples, int tdelay){
+    printf("\n### Sessions/Users ###\n");
+    for(int s = 0; s < samples; s++){
+        struct utmp *users;
+        users = getutent();
+        setutent();
+        int i=0;
+        //need an array of chars to store usernames
+        //make sure to not double count users that are connected to several sessions
+        while(users != NULL){
+            if(users->ut_type == USER_PROCESS){
+                if(s == samples-1){
+                    printf("%.*s, ", UT_NAMESIZE, users->ut_name);
+                    printf("%s, ", users->ut_line);
+                    printf("%.*s\n", UT_HOSTSIZE,  users->ut_host);
+                }
+                i++;
+            }
+            users = getutent();
+        }
+        printf("\nNumber of sessions: %d\n", i);
+        setutent();
+        userStats(i, users);
+        endutent();
+        if(s != samples-1){
+            // printf("\033[%dA", i+3);
+            printf("\033[3A");
+            fflush(stdout);
+        }
+        sleep(tdelay);
+    }
+}
 
 void utsInfo(){
     struct utsname utsData;
@@ -21,149 +209,75 @@ void utsInfo(){
     printf("Architecture = %s\n", utsData.machine);
 }
 
-void systemMemory(int samples, int tdelay){
-    struct sysinfo sysInfo;
-    
-    printf("\n### Memory ### (Phys. Used/Tot -- Virtual Used/Tot)\n");
-    for(int i=0; i < samples; i++){
-        if(sysinfo(&sysInfo)<0){
-            printf("sysinfo run with error");
-            break;
-        }
-        // phys. used/total = (total ram - free ram) / total ram
-        double phys_total = sysInfo.totalram;
-        double phys_used = phys_total - sysInfo.freeram;
-        // virtual used/total = [(total ram - free ram) + (total swap - free swap)] / total ram + total swap
-        double virt_total = sysInfo.totalram + sysInfo.totalswap;
-        double virt_used = phys_used + (sysInfo.totalswap - sysInfo.freeswap);
-        double convert = 9.31 * pow(10,-10);
-        phys_total *= convert;
-        phys_used *= convert;
-        virt_total *= convert;
-        virt_used *= convert;
-        printf("%.2f GB / %.2f GB -- %.2f GB / %.2f GB\n", 
-                phys_used, phys_total, virt_used, virt_total);
-        sleep(tdelay);
+void runFunctions(int sys, int u, int graphics, int samples, int tdelay){
+    printf("\nNumber of samples: %d -- every %d seconds\n", samples, tdelay);
+    printf("---------------------------------------------------------------");
+
+    if(sys == 1){
+        memoryInfo(samples,tdelay, graphics);
+        printf("---------------------------------------------------------------");
+        cpuInfo(samples, tdelay, graphics);
+        printf("---------------------------------------------------------------");
     }
-    
-}
-
-void cpuInfo(int samples, int tdelay, int graphics){
-
-    //reference: https://rosettacode.org/wiki/Linux_CPU_utilization 
-    
-    char str[100];
-	const char d[2] = " ";
-	char* token;
-	int i = 0;
-	long int sum = 0, idle, lastSum = 0,lastIdle = 0;
-	long double usageOfCPU;
-
-    printf("\n### CPU Usage Information ###\n");
-
-	while(samples>0){
-		FILE* fp = fopen("/proc/stat","r");
-	    i = 0;
-		fgets(str,100,fp);
-		fclose(fp);
-		token = strtok(str,d);
-	    sum = 0;
-		while(token!=NULL){
-			token = strtok(NULL,d);
-			if(token!=NULL){
-				sum += atoi(token);
-
-			if(i==3)
-				idle = atoi(token);
-
-			i++;
-		    }
-	    }
-	    usageOfCPU = 100 - (idle-lastIdle)*100.0/(sum-lastSum);
-
-        printf("\rTotal cpu use: %.2Lf%%", usageOfCPU);
-
-        if(graphics == 1){
-            printf("Busy for : %.2Lf%% of the time.\n", usageOfCPU);
-        }
-	    lastIdle = idle;
-	    lastSum = sum;
-	    samples--;
-	    sleep(tdelay);
-
-        fflush(stdout);
-	}	
+    if(u == 1){
+        user(samples, tdelay);
+        printf("---------------------------------------------------------------");
+    }
+    if(sys == 0 && u == 0){
+        memoryInfo(samples, tdelay, graphics);
+        printf("---------------------------------------------------------------");
+        cpuInfo(samples, tdelay, graphics);
+        printf("---------------------------------------------------------------");
+        user(samples, tdelay);
+        printf("---------------------------------------------------------------");
+        utsInfo();
+        printf("---------------------------------------------------------------");
+    }
     printf("\n");
-	
-
 }
-
-void user(){
-    //report how many users are connected in a given time
-    int numUsers = 0;
-    //report how many sessions each user is connected to
-    printf("\n### Sessions/users ###\n");
-    struct utmp *utm;
-    utm = getutent();
-    while(getutent() != NULL){
-        if(utm->ut_type == USER_PROCESS){
-            printf("%s, %s (%s)\n", utm->ut_user, utm->ut_line, utm->ut_host);
-            numUsers++;
-        }
-    }
-    printf("There are %d users connected at this time\n", numUsers);
-}
-
 
 int main(int argc, char** argv){
-    //argc is to know how many strings to expect in array
-    //argv[1] contains the first command line argument
     int samples = 10;
     int tdelay = 1;
-    int graphics = 1; //0 for false and 1 for true
 
-    // if(argC!=3)
-	// 	printf("Usage : %s <number of times /proc/stat should be polled followed by delay in seconds.>",argV[0]);
- 
+    //getting all flags
+    // 0 for false and 1 for true
+    int sys = 0;
+    int user = 0;
+    int graphics = 0;
 
-    if(argc > 1){
-        if(strcmp(argv[1], "--system")==0 || strcmp(argv[1], "--s")==0){
-            //call function that generates system usage only
-            //output system usage
-            utsInfo();
-            systemMemory(samples, tdelay);
-        }else if(strcmp(argv[1], "--user")==0 || strcmp(argv[1], "--u")==0){
-            //function that generates only user usage
-            user();
-        }else if(strcmp(argv[1], "--graphics")==0 || strcmp(argv[1], "--g")==0){
-            //function that includes graphical output in the cases where graphical outcome is possible
-            //graphics();
-        }else if(strcmp(argv[1], "t")==0){
-            cpuInfo(samples,tdelay, graphics);
-        }else if(strncmp(argv[1], "--samples", 9)==0){
-            //--samples=N  
-            // N = number of times the stats are going to be collected
-            // results = average of N stats
-            // default N=10
+    int secondDigit = 0;
 
-            //the stats include user usage and system usage
-                //aka what the first two flags return
+    if(argc>1){
+        for(int j=1; j<argc; j++){
+            if(strcmp(argv[j], "--system")==0 || strcmp(argv[j], "-s")==0){
+                sys = 1;
+            }else if(strcmp(argv[j], "--user")==0 || strcmp(argv[j], "-u")==0) {
+                user = 1;
+            }else if(strcmp(argv[j], "--graphics")==0 || strcmp(argv[j], "-g")==0){
+                graphics = 1;
+            }else if(strncmp(argv[j], "--samples=", 10)==0){
+                char* ptr;
+                ptr = &argv[j][10];
+                samples = atoi(ptr);
+            }else if(strncmp(argv[j], "--tdelay=", 9)==0){
+                char* ptr;
+                ptr = &argv[j][9];
+                tdelay = atoi(ptr);
 
-        }else if(strncmp(argv[1], "--tdelay", 8)==0){
-            // --tdelay=T 
-            //how frequently to sample in seconds
-            // default T=1 second
-        }else{
-            printf("Invalid Argument");
+            }else if(isdigit(*argv[j]) != 0){
+                if(secondDigit == 0){
+                    samples = atoi(argv[j]);
+                    secondDigit = 1;
+                }else{
+                    tdelay = atoi(argv[j]);
+                }  
+            }else{
+                printf("Invalid Argument: %s\n", argv[j]);
+            }
         }
-    }else{
-        //if No Arguments are provided, run samples stats
-        utsInfo();
-        systemMemory(samples, tdelay);
-        cpuInfo(samples, tdelay, graphics);
-        user();
     }
-    
 
+    runFunctions(sys, user, graphics, samples, tdelay);
     return 0;
 }
