@@ -88,6 +88,7 @@ Sysinfo library is used to access memory information
 - Virtual memory = totalram + totalswap
 - Used virtual memory = usedram + (totalswap - freeswap)
 <br>
+
 > If graphics flag was used<br>
 
 >> Change in usedram is calculated and graphically represented in a following way:
