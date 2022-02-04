@@ -93,11 +93,13 @@ Sysinfo library is used to access memory information
 >>> If the change was positive and significant *(100 * change > 1), we print (int)(100 * change) of #s* <br> followed by * if 100 * change is not an integer
 >>> If the change was negative and significant, we print *(100 * change) of @s*
 ---
+
 ```c
 void userStats(int numUsers, struct utmp* users){
     //implementation
 }
 ```
+
 Function takes 2 parameters
 - numUsers = number of sessions connected to the machine
 - users = struct utmp* that provides us the information about connected users
@@ -106,11 +108,13 @@ These parameters are passed to this function from user()
 <br>
 Purpose of this function is to count the number of users connected to the machine, it exists seperately from the session counter because we are dealing with nonstrings. Thus, it is required to have numUsers to be able to properly count the number of users
 ---
+
 ```c
 void user(int samples, int tdelay){
     //implementation
 }
 ```
+
 Function takes 2 parameters
 - samples
 - tdelay
