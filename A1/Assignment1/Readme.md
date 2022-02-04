@@ -89,7 +89,9 @@ Sysinfo library is used to access memory information
 - Used virtual memory = usedram + (totalswap - freeswap)
 <br>
 > If graphics flag was used<br>
+
 >> Change in usedram is calculated and graphically represented in a following way:
+
 >>> If the change was positive and significant *(100 * change > 1), we print (int)(100 * change) of #s* <br> followed by * if 100 * change is not an integer
 >>> If the change was negative and significant, we print *(100 * change) of @s*
 ---
